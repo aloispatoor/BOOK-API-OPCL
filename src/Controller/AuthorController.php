@@ -14,6 +14,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 class AuthorController extends AbstractController
 {
@@ -42,13 +43,19 @@ class AuthorController extends AbstractController
     }
 
     #[Route('/api/authors', name: 'author', methods: ['POST'])]
-    public function createAuthor(EntityManagerInterface $em, SerializerInterface $serializer, Request $request, urlGeneratorInterface $urlGenerator): JsonResponse
+    public function createAuthor(EntityManagerInterface $em, ValidatorInterface $validator, SerializerInterface $serializer, Request $request, urlGeneratorInterface $urlGenerator): JsonResponse
     {
         $author = $serializer->deserialize($request->getContent(), Author::class, 'json');
+
+        $errors = $validator->validate($author);
+        if($errors->count() > 0){
+            return new JsonResponse($serializer->serialize($errors, 'json'), JsonResponse::HTTP_BAD_REQUEST, [], true);
+        }
+
         $em->persist($author);
         $em->flush();
 
-        $jsonBook = $serializer->serialize($author, 'json', ['groups' => 'getBooks']);
+        $jsonBook = $serializer->serialize($author, 'json', ['groups' => 'getAuthors']);
 
         $location = $urlGenerator->generate('oneAuthor', ['id' => $author->getId()], UrlGeneratorInterface::ABSOLUTE_URL);
 
@@ -56,12 +63,17 @@ class AuthorController extends AbstractController
     }
 
     #[Route('/api/authors/{id}', name:"updateAuthor", methods:['PUT'])]
-    public function updateAuthor(Request $request, SerializerInterface $serializer, Author $currentAuthor, EntityManagerInterface $em): JsonResponse
+    public function updateAuthor(Request $request, SerializerInterface $serializer, ValidatorInterface $validator, Author $currentAuthor, EntityManagerInterface $em): JsonResponse
     {
         $updatedAuthor = $serializer->deserialize($request->getContent(),
             Author::class,
             'json',
             [AbstractNormalizer::OBJECT_TO_POPULATE => $currentAuthor]);
+
+        $errors = $validator->validate($updatedAuthor);
+        if($errors->count() > 0){
+            return new JsonResponse($serializer->serialize($errors, 'json'), JsonResponse::HTTP_BAD_REQUEST, [], true);
+        }
 
         $em->persist($updatedAuthor);
         $em->flush();

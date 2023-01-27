@@ -14,6 +14,7 @@ use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
+use Symfony\Component\Validator\Validator\ValidatorInterface;
 
 class BookController extends AbstractController
 {
@@ -42,30 +43,44 @@ class BookController extends AbstractController
     }
 
     #[Route('/api/books', name: 'book', methods: ['POST'])]
-    public function createBook(AuthorRepository $authorRepository, EntityManagerInterface $em, SerializerInterface $serializer, Request $request, urlGeneratorInterface $urlGenerator): JsonResponse
+    public function createBook(AuthorRepository $authorRepository, ValidatorInterface $validator, EntityManagerInterface $em, SerializerInterface $serializer, Request $request, urlGeneratorInterface $urlGenerator): JsonResponse
     {
         $book = $serializer->deserialize($request->getContent(), Book::class, 'json');
-        $content = $request->toArray();
-        // SI IDAUTHOR EST UNDEFINED => -1
-        $idAuthor = $content['idAuthor'] ?? -1;
-        $book->setAuthor($authorRepository->find($idAuthor));
+
+        // On vérifie les erreurs
+        $errors = $validator->validate($book);
+
+        if ($errors->count() > 0) {
+            return new JsonResponse($serializer->serialize($errors, 'json'), JsonResponse::HTTP_BAD_REQUEST, [], true);
+        }
+
         $em->persist($book);
         $em->flush();
 
-        $jsonBook = $serializer->serialize($book, 'json', ['groups' => 'getBooks']);
+        $content = $request->toArray();
+        $idAuthor = $content['idAuthor'] ?? -1;
 
+        $book->setAuthor($authorRepository->find($idAuthor));
+        $jsonBook = $serializer->serialize($book, 'json', ['groups' => 'getBooks']);
         $location = $urlGenerator->generate('detailBook', ['id' => $book->getId()], UrlGeneratorInterface::ABSOLUTE_URL);
 
         return new JsonResponse($jsonBook, Response::HTTP_CREATED, ["Location" => $location], true);
     }
 
     #[Route('/api/books/{id}', name:"updateBook", methods:['PUT'])]
-    public function updateBook(Request $request, SerializerInterface $serializer, Book $currentBook, EntityManagerInterface $em, AuthorRepository $authorRepository): JsonResponse
+    public function updateBook(Request $request, SerializerInterface $serializer, ValidatorInterface $validator, Book $currentBook, EntityManagerInterface $em, AuthorRepository $authorRepository): JsonResponse
     {
         $updatedBook = $serializer->deserialize($request->getContent(),
             Book::class,
             'json',
             [AbstractNormalizer::OBJECT_TO_POPULATE => $currentBook]);
+
+        $errors = $validator->validate($updatedBook);
+
+        if ($errors->count() > 0) {
+            return new JsonResponse($serializer->serialize($errors, 'json'), JsonResponse::HTTP_BAD_REQUEST, [], true);
+        }
+
         $content = $request->toArray();
         $idAuthor = $content['idAuthor'] ?? -1;
         $updatedBook->setAuthor($authorRepository->find($idAuthor));
