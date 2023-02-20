@@ -39,6 +39,17 @@ class AuthorRepository extends ServiceEntityRepository
         }
     }
 
+    public function findAllWithPagination($page, $limit)
+    {
+        $qb = $this->createQueryBuilder('b')
+            ->setFirstResult(($page - 1) * $limit)
+            ->setMaxResults($limit);
+
+        $query = $qb->getQuery();
+        $query->setFetchMode(Author::class, "books", \Doctrine\ORM\Mapping\ClassMetadata::FETCH_EAGER);
+        return $query->getResult();
+    }
+
 //    /**
 //     * @return Author[] Returns an array of Author objects
 //     */

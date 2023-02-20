@@ -4,7 +4,6 @@ namespace App\Controller;
 
 use App\Entity\Author;
 use App\Repository\AuthorRepository;
-use App\Repository\BookRepository;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -15,14 +14,23 @@ use Symfony\Component\Serializer\Normalizer\AbstractNormalizer;
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
+use Symfony\Contracts\Cache\ItemInterface;
+use Symfony\Contracts\Cache\TagAwareCacheInterface;
 
 class AuthorController extends AbstractController
 {
     #[Route('/api/authors', name: 'authors', methods: ['GET'])]
-    public function getAllAuthor(AuthorRepository $authorRepository, SerializerInterface $serializer): JsonResponse
+    public function getAllAuthor(AuthorRepository $authorRepository, SerializerInterface $serializer, TagAwareCacheInterface $cachePool, Request $request): JsonResponse
     {
-        $authorList = $authorRepository->findAll();
-        $jsonAuthorList = $serializer->serialize($authorList, 'json', ['groups' => 'getAuthors']);
+        $page = $request->get('page', 1);
+        $limit = $request->get('limit', 3);
+
+        $idCache = "authors-" . $page . "-" . $limit;
+        $jsonAuthorList = $cachePool->get($idCache, function(ItemInterface $item) use ($authorRepository, $page, $limit, $serializer){
+            $item->tag("bookCache");
+            $authorList = $authorRepository->findAllWithPagination($page, $limit);
+            return $serializer->serialize($authorList, 'json', ['groups' => 'getAuthors']);
+        });
         return new JsonResponse($jsonAuthorList, Response::HTTP_OK, [], true);
     }
 
@@ -34,8 +42,9 @@ class AuthorController extends AbstractController
     }
 
     #[Route('/api/authors/{id}', name: 'deleteAuthor', methods: ['DELETE'])]
-    public function deleteAuthor(Author $author, EntityManagerInterface $em): JsonResponse
+    public function deleteAuthor(Author $author, EntityManagerInterface $em, TagAwareCacheInterface $cachePool): JsonResponse
     {
+        $cachePool->invalidateTags(["authorsCache"]);
         $em->remove($author);
         $em->flush();
 
